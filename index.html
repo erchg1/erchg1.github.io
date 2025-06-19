@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Defibrillator Checklist</title>
+    <!-- Chosen Palette: Pastel Blue -->
+    <!-- Application Structure Plan: The application is a single-page, task-oriented checklist designed for efficiency. It uses collapsible accordions to categorize checks (General, Performance, Supplies), reducing cognitive load for medical staff. User inputs (name, date, check type) are grouped at the top. The core interaction involves simple status buttons. A live dashboard section provides immediate feedback with a 7-day trend chart and a real-time log of the latest checks, powered by Firestore. Clicking on a log entry with issues opens a modal for detailed problem review. This structure facilitates a quick, linear workflow while providing immediate historical context and drill-down capabilities. -->
+    <!-- Visualization & Content Choices: Checklist Items -> Goal: Capture Status -> Viz/Presentation: Interactive HTML buttons -> Interaction: Click to set status, reveal notes field for "problem" states -> Justification: Faster and more touch-friendly than traditional inputs. Historical Data -> Goal: Analyze Trends & Review -> Viz/Presentation: Bar Chart (Chart.js) & HTML Table -> Interaction: Chart shows 7-day pass/fail summary. Table rows with problems are clickable, opening a JS-powered modal with details. -> Justification: Chart provides a quick visual overview of reliability. The interactive table allows for drilling down into specific issues without leaving the page. All visual elements, including the footer logo, use HTML/CSS to avoid external graphics. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Sarabun', sans-serif; 
+            background-color: #EFF6FF; /* Pastel Blue */
+        }
+        .accordion-content { 
+            max-height: 0; 
+            overflow: hidden; 
+            transition: max-height 0.3s ease-out; 
+        }
+        .accordion-header {
+            background-color: #DBEAFE; /* Lighter Pastel Blue */
+        }
+        .accordion-header:hover {
+            background-color: #BFDBFE;
+        }
+        .main-submit-btn {
+            background-color: #60A5FA; /* Pastel Blue */
+            color: white;
+            font-weight: bold;
+        }
+        .main-submit-btn:hover {
+            background-color: #3B82F6;
+        }
+        .status-btn {
+            border-color: #93C5FD;
+        }
+        .status-btn.active-ok { 
+            background-color: #A7F3D0; color: #047857; border-color: #047857; 
+        }
+        .status-btn.active-fail { 
+            background-color: #FECACA; color: #B91C1C; border-color: #B91C1C; 
+        }
+        .status-btn.active-add { 
+            background-color: #FED7AA; color: #C2410C; border-color: #C2410C;
+        }
+        .status-btn.active-no { 
+            background-color: #E5E7EB; color: #4B5563; border-color: #4B5563;
+        }
+        .chart-container { 
+            position: relative; 
+            width: 100%; 
+            max-width: 700px; 
+            margin-left: auto; 
+            margin-right: auto; 
+            height: 300px; 
+            max-height: 400px; 
+        }
+        @media (min-width: 768px) { 
+            .chart-container { height: 350px; } 
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #60A5FA;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .modal-overlay {
+            transition: opacity 0.3s ease;
+        }
+        .modal-container {
+            transition: transform 0.3s ease;
+        }
+    </style>
+</head>
+<body class="text-blue-900">
+
+    <div class="container mx-auto max-w-5xl p-4 sm:p-6 lg:p-8">
+
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-blue-800">แบบฟอร์มตรวจเช็คเครื่อง Defibrillator Mindray BeneHeart D6</h1>
+            <p id="current-datetime" class="text-blue-600 mt-2">กำลังโหลดวันที่และเวลา...</p>
+        </header>
+
+        <main>
+            <div class="bg-white p-6 rounded-xl shadow-lg space-y-6">
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="check-date" class="block text-lg font-semibold text-blue-800 mb-2">วันที่ตรวจ</label>
+                        <input type="date" id="check-date" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                     <div>
+                        <label for="check-time" class="block text-lg font-semibold text-blue-800 mb-2">เวลาที่ตรวจ</label>
+                        <input type="time" id="check-time" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label for="checker-name" class="block text-lg font-semibold text-blue-800 mb-2">ชื่อผู้ตรวจ</label>
+                        <input type="text" id="checker-name" placeholder="กรอกชื่อ-สกุล" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </div>
+
+
+                <div id="checklist-accordion" class="space-y-3">
+                    
+                    <div class="border border-blue-100 rounded-lg">
+                        <button class="accordion-header w-full flex justify-between items-center p-4 text-left transition duration-200 rounded-t-lg">
+                            <span class="text-xl font-semibold text-blue-800">1. สภาพความพร้อมใช้งานทั่วไป</span>
+                            <span class="accordion-icon text-2xl font-bold text-blue-600 transform transition-transform duration-300">-</span>
+                        </button>
+                        <div class="accordion-content">
+                            <div class="p-4 space-y-4">
+                                <p class="text-blue-700">ส่วนนี้เป็นการประเมินสภาพภายนอกและความสะอาดโดยรวมของเครื่องและอุปกรณ์ประกอบ เพื่อให้แน่ใจว่าไม่มีความเสียหายที่มองเห็นได้และพร้อมสำหรับการใช้งาน</p>
+                                <div class="check-item p-3 border-b border-blue-50" data-item-id="cleanliness" data-item-name="ความสะอาดภายนอกเครื่อง">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">ความสะอาดภายนอกเครื่อง</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ปกติ">✔️ ปกติ</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ผิดปกติ">❌ ผิดปกติ</button>
+                                        </div>
+                                    </div>
+                                    <div class="problem-details hidden mt-3">
+                                        <textarea placeholder="ระบุรายละเอียดปัญหา..." class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-red-400 focus:border-red-400"></textarea>
+                                    </div>
+                                </div>
+                                <div class="check-item p-3 border-b border-blue-50" data-item-id="cables" data-item-name="สภาพสายและขั้วต่อ (ECG/Adapter)">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">สภาพสายและขั้วต่อ (ECG/Adapter)</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ปกติ">✔️ ปกติ</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ผิดปกติ">❌ ผิดปกติ</button>
+                                        </div>
+                                    </div>
+                                     <div class="problem-details hidden mt-3">
+                                        <textarea placeholder="ระบุรายละเอียดปัญหา..." class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-red-400 focus:border-red-400"></textarea>
+                                    </div>
+                                </div>
+                                <div class="check-item p-3" data-item-id="paddles" data-item-name="สภาพ Paddle Electrode">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">สภาพ Paddle Electrode</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ปกติ">✔️ ปกติ</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ผิดปกติ">❌ ผิดปกติ</button>
+                                        </div>
+                                    </div>
+                                     <div class="problem-details hidden mt-3">
+                                        <textarea placeholder="ระบุรายละเอียดปัญหา..." class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-red-400 focus:border-red-400"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="border border-blue-100 rounded-lg">
+                        <button class="accordion-header w-full flex justify-between items-center p-4 text-left transition duration-200 rounded-t-lg">
+                            <span class="text-xl font-semibold text-blue-800">2. การทดสอบประสิทธิภาพ</span>
+                             <span class="accordion-icon text-2xl font-bold text-blue-600 transform transition-transform duration-300">+</span>
+                        </button>
+                         <div class="accordion-content">
+                            <div class="p-4 space-y-4">
+                                <p class="text-blue-700">เป็นการทดสอบฟังก์ชันการทำงานหลักของเครื่องเพื่อให้มั่นใจว่าสามารถทำงานได้อย่างถูกต้องเมื่อถึงสถานการณ์ฉุกเฉิน</p>
+                                <div class="check-item p-3 border-b border-blue-50" data-item-id="battery" data-item-name="ทดสอบแบตเตอรี่ (เปิดเครื่อง 30 นาที)">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">ทดสอบแบตเตอรี่ (เปิดเครื่อง 30 นาที)</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ปกติ">✔️ ปกติ</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ผิดปกติ">❌ ผิดปกติ</button>
+                                        </div>
+                                    </div>
+                                    <div class="problem-details hidden mt-3">
+                                        <textarea placeholder="ระบุรายละเอียดปัญหา..." class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-red-400 focus:border-red-400"></textarea>
+                                    </div>
+                                </div>
+                                <div class="check-item p-3 border-b border-blue-50" data-item-id="power_button" data-item-name="การทำงานปุ่มปรับพลังงาน">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">การทำงานปุ่มปรับพลังงาน</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ปกติ">✔️ ปกติ</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ผิดปกติ">❌ ผิดปกติ</button>
+                                        </div>
+                                    </div>
+                                     <div class="problem-details hidden mt-3">
+                                        <textarea placeholder="ระบุรายละเอียดปัญหา..." class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-red-400 focus:border-red-400"></textarea>
+                                    </div>
+                                </div>
+                                <div class="check-item p-3 border-b border-blue-50" data-item-id="discharge" data-item-name="ทดสอบ Discharge พลังงาน 3 ครั้ง">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">ทดสอบ Discharge พลังงาน 3 ครั้ง</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ปกติ">✔️ ปกติ</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ผิดปกติ">❌ ผิดปกติ</button>
+                                        </div>
+                                    </div>
+                                     <div class="problem-details hidden mt-3">
+                                        <textarea placeholder="ระบุรายละเอียดปัญหา..." class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-red-400 focus:border-red-400"></textarea>
+                                    </div>
+                                </div>
+                                <div class="check-item p-3" data-item-id="printer" data-item-name="การทำงานของเครื่องพิมพ์ (Printer)">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">การทำงานของเครื่องพิมพ์ (Printer)</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ปกติ">✔️ ปกติ</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ผิดปกติ">❌ ผิดปกติ</button>
+                                        </div>
+                                    </div>
+                                     <div class="problem-details hidden mt-3">
+                                        <textarea placeholder="ระบุรายละเอียดปัญหา..." class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-red-400 focus:border-red-400"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                     <div class="border border-blue-100 rounded-lg">
+                        <button class="accordion-header w-full flex justify-between items-center p-4 text-left transition duration-200 rounded-t-lg">
+                            <span class="text-xl font-semibold text-blue-800">3. วัสดุสิ้นเปลืองและอุปกรณ์</span>
+                            <span class="accordion-icon text-2xl font-bold text-blue-600 transform transition-transform duration-300">+</span>
+                        </button>
+                        <div class="accordion-content">
+                            <div class="p-4 space-y-4">
+                                <p class="text-blue-700">ตรวจสอบความพร้อมของวัสดุสิ้นเปลืองที่จำเป็นต้องใช้ร่วมกับเครื่อง ให้มีปริมาณเพียงพอและอยู่ในสภาพดี</p>
+                                <div class="check-item p-3 border-b border-blue-50" data-item-id="paper" data-item-name="กระดาษบันทึกผล">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">กระดาษบันทึกผล</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="มี/พร้อมใช้">👍 มี/พร้อมใช้</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ต้องเติม">📋 ต้องเติม</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="check-item p-3 border-b border-blue-50" data-item-id="gel" data-item-name="เจลอิเล็กโทรด (Electrode Gel)">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">เจลอิเล็กโทรด (Electrode Gel)</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="มี/พร้อมใช้">👍 มี/พร้อมใช้</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ต้องเติม">📋 ต้องเติม</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="check-item p-3 border-b border-blue-50" data-item-id="pacemaker_paddles" data-item-name="External Pacemaker Paddle">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">External Pacemaker Paddle</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="มี/พร้อมใช้">👍 มี/พร้อมใช้</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ไม่มี/ชำรุด">🚫 ไม่มี/ชำรุด</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="check-item p-3" data-item-id="pediatric_pads" data-item-name="แผ่นแปะอิเล็กโทรดเด็ก (Pediatric pads)">
+                                    <div class="flex flex-col sm:flex-row justify-between sm:items-center">
+                                        <p class="font-semibold mb-2 sm:mb-0">แผ่นแปะอิเล็กโทรดเด็ก (Pediatric pads)</p>
+                                        <div class="flex space-x-2 flex-shrink-0">
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="มี/พร้อมใช้">👍 มี/พร้อมใช้</button>
+                                            <button class="status-btn px-4 py-1.5 border rounded-lg transition" data-status="ไม่มี/ชำรุด">🚫 ไม่มี/ชำรุด</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-6">
+                    <button id="submit-btn" class="w-full main-submit-btn text-xl py-4 rounded-lg transition duration-300 shadow-lg">
+                        ส่งผลการตรวจ
+                    </button>
+                </div>
+                 <div id="error-message" class="hidden text-center p-4 bg-red-100 text-red-800 rounded-lg mt-4">
+                    <p class="font-bold">เกิดข้อผิดพลาด!</p>
+                    <p id="error-text">กรุณากรอกข้อมูลให้ครบถ้วน</p>
+                </div>
+            </div>
+
+            <div class="mt-12 bg-white p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-bold text-blue-800 mb-6 text-center">สรุปผลการตรวจและประวัติ</h2>
+                <div id="history-loading" class="text-center">
+                     <div class="loader"></div>
+                     <p class="text-blue-600">กำลังโหลดประวัติการตรวจ...</p>
+                </div>
+                <div id="history-content" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                    <div>
+                        <h3 class="text-lg font-semibold text-center mb-4 text-blue-800">สถานะการตรวจ 7 วันที่ผ่านมา</h3>
+                        <div class="chart-container">
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                         <h3 class="text-lg font-semibold text-center mb-4 text-blue-800">ประวัติการตรวจล่าสุด</h3>
+                         <div class="overflow-x-auto max-h-[30rem] border border-blue-100 rounded-lg">
+                            <table class="w-full text-sm text-left text-blue-700">
+                                <thead class="text-xs text-blue-800 uppercase bg-blue-100 sticky top-0">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-3">วันที่/เวลา</th>
+                                        <th scope="col" class="px-4 py-3">ประเภท</th>
+                                        <th scope="col" class="px-4 py-3">ผู้ตรวจ</th>
+                                        <th scope="col" class="px-4 py-3">สถานะ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-log">
+                                </tbody>
+                            </table>
+                         </div>
+                    </div>
+                </div>
+                 <div id="history-empty" class="hidden text-center text-blue-600 py-8">
+                    <p>ยังไม่มีประวัติการตรวจ</p>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <footer class="mt-12 py-6">
+        <div class="container mx-auto flex items-center justify-center gap-3">
+            <div class="flex items-center justify-center h-10 w-10 border-2 border-blue-500 rounded-lg bg-blue-100 text-blue-700 font-bold text-sm tracking-tighter">
+                ER
+            </div>
+            <span class="text-lg font-semibold text-blue-700">© ER-CHG1</span>
+        </div>
+    </footer>
+
+    <div id="details-modal" class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden opacity-0">
+        <div class="modal-container bg-white w-full max-w-lg mx-auto rounded-xl shadow-2xl overflow-hidden transform scale-95">
+            <div class="flex justify-between items-center p-4 border-b bg-blue-50">
+                <h3 id="modal-title" class="text-xl font-bold text-blue-800">รายละเอียดปัญหา</h3>
+                <button id="close-modal-btn" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+            </div>
+            <div id="modal-content" class="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+            </div>
+        </div>
+    </div>
+
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    
+    const checklistState = {};
+    let statusChart = null;
+    let db, auth, userId;
+
+    const GOOGLE_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw1a4ABt5DlwJGo_W3Ndfdsxg-AEmWL3jFFlwVNnk5S-CjSIijEGMy4bY2ucpOUpl6L/exec';
+
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "...", authDomain: "...", projectId: "...", storageBucket: "...", messagingSenderId: "...", appId: "..." };
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-defib-app';
+
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeUI();
+        initializeAppAndAuth();
+    });
+
+    function initializeUI() {
+        updateDateTime();
+        setInterval(updateDateTime, 60000);
+        
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+        const day = now.getDate().toString().padStart(2, '0');
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        
+        document.getElementById('check-date').value = `${year}-${month}-${day}`;
+        document.getElementById('check-time').value = `${hours}:${minutes}`;
+
+        setupAccordions();
+        setupChecklistItems();
+        setupSubmission();
+        setupModal();
+    }
+    
+    async function initializeAppAndAuth() {
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    loadHistory(); 
+                } else {
+                    try {
+                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                         } else {
+                            await signInAnonymously(auth);
+                         }
+                    } catch(authError) {
+                        console.error("Authentication Error:", authError);
+                        document.getElementById('history-loading').innerHTML = '<p class="text-red-500">ไม่สามารถเชื่อมต่อเพื่อโหลดประวัติได้</p>';
+                    }
+                }
+            });
+
+        } catch (e) {
+            console.error("Firebase Initialization Error:", e);
+            document.getElementById('history-loading').innerHTML = '<p class="text-red-500">เกิดข้อผิดพลาดในการตั้งค่าฐานข้อมูล</p>';
+        }
+    }
+    
+    function setupAccordions() {
+        const accordionHeaders = document.querySelectorAll('.accordion-header');
+        accordionHeaders.forEach(header => {
+            header.addEventListener('click', () => {
+                const content = header.nextElementSibling;
+                const icon = header.querySelector('.accordion-icon');
+                const isOpen = content.style.maxHeight && content.style.maxHeight !== "0px";
+
+                document.querySelectorAll('.accordion-content').forEach(c => c.style.maxHeight = null);
+                document.querySelectorAll('.accordion-icon').forEach(i => i.textContent = '+');
+                
+                if (!isOpen) {
+                    content.style.maxHeight = content.scrollHeight + "px";
+                    icon.textContent = '-';
+                }
+            });
+        });
+        
+        if (accordionHeaders.length > 0) {
+            accordionHeaders[0].click();
+        }
+    }
+    
+    function setupChecklistItems() {
+        document.querySelectorAll('.check-item').forEach(item => {
+            const itemId = item.dataset.itemId;
+            checklistState[itemId] = { status: null, notes: '' };
+
+            const buttons = item.querySelectorAll('.status-btn');
+            const problemDetails = item.querySelector('.problem-details');
+            
+            buttons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const selectedStatus = button.dataset.status;
+                    checklistState[itemId].status = selectedStatus;
+
+                    buttons.forEach(btn => btn.classList.remove('active-ok', 'active-fail', 'active-add', 'active-no'));
+                    
+                    if (selectedStatus === 'ปกติ' || selectedStatus === 'มี/พร้อมใช้') button.classList.add('active-ok');
+                    else if (selectedStatus === 'ผิดปกติ') button.classList.add('active-fail');
+                    else if (selectedStatus === 'ต้องเติม') button.classList.add('active-add');
+                    else button.classList.add('active-no');
+
+                    if (problemDetails) {
+                       problemDetails.classList.toggle('hidden', selectedStatus !== 'ผิดปกติ');
+                    }
+                });
+            });
+
+            const textarea = item.querySelector('textarea');
+            if (textarea) {
+                textarea.addEventListener('input', (e) => {
+                    checklistState[itemId].notes = e.target.value.trim();
+                });
+            }
+        });
+    }
+
+    function setupSubmission() {
+        const submitBtn = document.getElementById('submit-btn');
+        
+        submitBtn.addEventListener('click', async () => {
+            const formContainer = submitBtn.closest('.bg-white');
+            const errorMessage = formContainer.querySelector('#error-message');
+            const errorText = formContainer.querySelector('#error-text');
+
+            const checkerName = document.getElementById('checker-name').value.trim();
+            const checkDate = document.getElementById('check-date').value;
+            const checkTime = document.getElementById('check-time').value;
+            const allItemsChecked = Object.values(checklistState).every(item => item.status !== null);
+
+            if (!checkerName || !checkDate || !checkTime || !allItemsChecked) {
+                if (errorText) errorText.textContent = 'กรุณากรอกข้อมูลการตรวจให้ครบทุกช่อง และตรวจสอบทุกรายการ';
+                if (errorMessage) {
+                    errorMessage.classList.remove('hidden');
+                    setTimeout(() => errorMessage.classList.add('hidden'), 4000);
+                }
+                return;
+            }
+            
+            const userDateTime = new Date(`${checkDate}T${checkTime}`);
+            const dayOfMonth = userDateTime.getDate();
+            const dayOfWeek = userDateTime.getDay(); // 0 = Sunday
+
+            let checkType = 'รายวัน';
+            if (dayOfMonth === 1) {
+                checkType = 'รายเดือน';
+            } else if (dayOfWeek === 0) {
+                checkType = 'รายสัปดาห์';
+            }
+            
+            const hasIssue = Object.values(checklistState).some(item => ['ผิดปกติ', 'ต้องเติม', 'ไม่มี/ชำรุด'].includes(item.status));
+            const overallStatus = hasIssue ? 'พบปัญหา' : 'ผ่าน';
+
+            const finalDataForFirestore = {
+                checkerName,
+                checkTimestamp: Timestamp.fromDate(userDateTime),
+                checkType,
+                items: checklistState,
+                overallStatus,
+            };
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'กำลังบันทึก...';
+
+            try {
+                const collectionPath = `artifacts/${appId}/public/data/defibrillator_checks`;
+                await addDoc(collection(db, collectionPath), finalDataForFirestore);
+                
+                await saveToGoogleSheet({
+                    checkerName,
+                    checkTimestamp: userDateTime.toISOString(),
+                    checkType,
+                    items: checklistState,
+                    overallStatus,
+                });
+
+                formContainer.innerHTML = `<div class="text-center p-8"><p class="text-2xl font-bold text-green-600">บันทึกข้อมูลเรียบร้อยแล้ว!</p><p class="text-green-500 mt-2">ขอบคุณสำหรับการตรวจเช็ค</p></div>`;
+
+                setTimeout(() => window.location.reload(), 3000);
+
+            } catch (e) {
+                console.error("Submission Error: ", e);
+                if(errorText) errorText.textContent = 'ไม่สามารถบันทึกข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่อและลองใหม่อีกครั้ง';
+                if(errorMessage) errorMessage.classList.remove('hidden');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'ส่งผลการตรวจ';
+            }
+        });
+    }
+
+    async function saveToGoogleSheet(data) {
+        if (!GOOGLE_SHEET_WEB_APP_URL) {
+            console.warn('Google Sheets URL is not configured. Skipping sheet submission.');
+            return; 
+        }
+
+        // Create a deep copy to transform for the sheet without affecting other processes
+        const sheetData = JSON.parse(JSON.stringify(data));
+        
+        // Enhance the items object with full Thai names for better readability in the sheet
+        const problemItemsForSheet = {};
+        if (sheetData.overallStatus === 'พบปัญหา') {
+            for (const key in sheetData.items) {
+                const item = sheetData.items[key];
+                if (['ผิดปกติ', 'ต้องเติม', 'ไม่มี/ชำรุด'].includes(item.status)) {
+                    const itemElement = document.querySelector(`.check-item[data-item-id="${key}"]`);
+                    const itemName = itemElement ? itemElement.dataset.itemName : key;
+                    problemItemsForSheet[itemName] = { // Use the full name as the key
+                        status: item.status,
+                        notes: item.notes
+                    };
+                }
+            }
+        }
+        sheetData.items = problemItemsForSheet; // Replace the original items with the enhanced version
+
+        try {
+            await fetch(GOOGLE_SHEET_WEB_APP_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(sheetData),
+            });
+            console.log('Successfully sent data to Google Sheet.');
+        } catch (error) {
+            console.error('Error sending data to Google Sheet:', error);
+        }
+    }
+    
+    function setupModal() {
+        const modal = document.getElementById('details-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+
+        const closeModal = () => {
+            modal.classList.add('opacity-0');
+            modal.querySelector('.modal-container').classList.add('scale-95');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        };
+        
+        closeModalBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+    }
+
+    function loadHistory() {
+        const collectionPath = `artifacts/${appId}/public/data/defibrillator_checks`;
+        const q = query(collection(db, collectionPath));
+        
+        const historyLoading = document.getElementById('history-loading');
+        const historyContent = document.getElementById('history-content');
+        const historyEmpty = document.getElementById('history-empty');
+        const logBody = document.getElementById('history-log');
+
+        onSnapshot(q, (querySnapshot) => {
+            historyLoading.classList.add('hidden');
+            if (querySnapshot.empty) {
+                historyEmpty.classList.remove('hidden');
+                historyContent.classList.add('hidden');
+                return;
+            }
+            
+            historyEmpty.classList.add('hidden');
+            historyContent.classList.remove('hidden');
+
+            const checks = [];
+            querySnapshot.forEach((doc) => {
+                checks.push({ id: doc.id, ...doc.data() });
+            });
+            
+            checks.sort((a, b) => b.checkTimestamp.seconds - a.checkTimestamp.seconds);
+
+            renderHistoryLog(checks);
+            renderStatusChart(checks);
+
+        }, (error) => {
+            console.error("Error fetching history: ", error);
+            historyLoading.innerHTML = '<p class="text-red-500">เกิดข้อผิดพลาดในการโหลดประวัติ</p>';
+        });
+        
+        logBody.addEventListener('click', (e) => {
+            const problemRow = e.target.closest('.problem-row');
+            if (problemRow) {
+                showProblemDetails(problemRow.dataset.details, problemRow.dataset.checkType);
+            }
+        });
+    }
+    
+    function showProblemDetails(detailsJson, checkType) {
+        const details = JSON.parse(detailsJson);
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+
+        modalTitle.textContent = `รายละเอียดปัญหา (การตรวจ${checkType})`;
+        
+        let html = '<p>ไม่พบรายละเอียดปัญหา</p>';
+        if (details && Object.keys(details).length > 0) {
+             html = Object.entries(details).map(([item, note]) => `
+                <div class="pb-2 mb-2 border-b border-blue-100">
+                   <p class="font-semibold text-blue-800">${item}</p>
+                   <p class="text-gray-600 pl-2">${note || 'ไม่ได้ระบุรายละเอียด'}</p>
+                </div>
+             `).join('');
+        }
+        modalContent.innerHTML = html;
+
+        const modal = document.getElementById('details-modal');
+        modal.classList.remove('hidden');
+        setTimeout(() => {
+            modal.classList.remove('opacity-0');
+            modal.querySelector('.modal-container').classList.remove('scale-95');
+        }, 10);
+    }
+
+    function renderHistoryLog(checks) {
+        const logBody = document.getElementById('history-log');
+        logBody.innerHTML = '';
+
+        checks.slice(0, 20).forEach(check => {
+            const dateTime = new Date(check.checkTimestamp.seconds * 1000).toLocaleString('th-TH', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', hour12: false
+            }).replace(',', '');
+            
+            let rowClass = 'bg-white border-b';
+            let statusClass = 'bg-green-100 text-green-800';
+            let detailsAttr = '';
+            const checkType = check.checkType || 'รายวัน';
+            
+            if (check.overallStatus === 'พบปัญหา') {
+                statusClass = 'bg-red-100 text-red-800';
+                rowClass += ' problem-row cursor-pointer hover:bg-blue-50';
+                
+                const problemNotes = {};
+                for (const key in check.items) {
+                    const item = check.items[key];
+                    if (['ผิดปกติ', 'ต้องเติม', 'ไม่มี/ชำรุด'].includes(item.status)) {
+                         const itemElement = document.querySelector(`.check-item[data-item-id="${key}"]`);
+                         const itemName = itemElement ? itemElement.dataset.itemName : key;
+                         problemNotes[itemName] = `${item.status}${item.notes ? `: ${item.notes}` : ''}`;
+                    }
+                }
+                detailsAttr = `data-details='${JSON.stringify(problemNotes)}' data-check-type='${checkType}'`;
+            }
+            
+            const row = `
+                <tr class="${rowClass}" ${detailsAttr}>
+                    <td class="px-4 py-3">${dateTime} น.</td>
+                    <td class="px-4 py-3"><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">${checkType}</span></td>
+                    <td class="px-4 py-3 font-medium text-blue-900 whitespace-nowrap">${check.checkerName}</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 ${statusClass} rounded-full text-xs font-medium">${check.overallStatus}</span>
+                    </td>
+                </tr>
+            `;
+            logBody.innerHTML += row;
+        });
+    }
+
+    function renderStatusChart(checks) {
+        const labels = [];
+        const passedData = Array(7).fill(0);
+        const failedData = Array(7).fill(0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(d.getDate() - i);
+            labels.push(d.toLocaleDateString('th-TH', { weekday: 'short' }).replace('.', ''));
+        }
+
+        checks.forEach(check => {
+            const checkDate = new Date(check.checkTimestamp.seconds * 1000);
+            checkDate.setHours(0,0,0,0);
+            const diffTime = today - checkDate;
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays >= 0 && diffDays < 7) {
+                const index = 6 - diffDays;
+                if (check.overallStatus === 'ผ่าน') passedData[index]++;
+                else failedData[index]++;
+            }
+        });
+
+        const ctx = document.getElementById('statusChart').getContext('2d');
+        if (statusChart) statusChart.destroy();
+        
+        statusChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'ผ่าน',
+                    data: passedData,
+                    backgroundColor: 'rgba(56, 189, 248, 0.7)',
+                    borderColor: 'rgba(14, 116, 144, 1)',
+                    borderWidth: 1
+                }, {
+                    label: 'พบปัญหา',
+                    data: failedData,
+                    backgroundColor: 'rgba(252, 165, 165, 0.7)',
+                    borderColor: 'rgba(220, 38, 38, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 }}},
+                plugins: {
+                    title: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.dataset.label || ''}: ${context.parsed.y} ครั้ง`
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateDateTime() {
+        const now = new Date();
+        const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', hour: '2-digit', minute: '2-digit' };
+        document.getElementById('current-datetime').textContent = `วันที่ ${now.toLocaleDateString('th-TH', options)}`;
+    }
+
+</script>
+
+</body>
+</html>
