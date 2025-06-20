@@ -95,7 +95,7 @@
         </header>
 
         <main>
-            <div class="bg-white p-6 rounded-xl shadow-lg space-y-6">
+            <div id="main-content-container" class="bg-white p-6 rounded-xl shadow-lg space-y-6">
                 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -343,7 +343,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, collection, addDoc, onSnapshot, query, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     
     const checklistState = {};
@@ -352,14 +352,19 @@
 
     const GOOGLE_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw1a4ABt5DlwJGo_W3Ndfdsxg-AEmWL3jFFlwVNnk5S-CjSIijEGMy4bY2ucpOUpl6L/exec';
 
+    // =====================================================================================
+    // !! สำคัญ: กรุณานำค่า Firebase Config จากโปรเจกต์ของคุณมาใส่ที่นี่ !!
+    // คุณสามารถรับค่านี้ได้จาก Firebase Console -> Project settings (ไอคอนเฟือง)
+    // =====================================================================================
     const firebaseConfig = {
-  apiKey: "AIzaSyB1ZjPzgmsk3j8CMH-90MpCkZKWdju5To8",
-  authDomain: "defib-checklist-app.firebaseapp.com",
-  projectId: "defib-checklist-app",
-  storageBucket: "defib-checklist-app.firebasestorage.app",
-  messagingSenderId: "317645119860",
-  appId: "1:317645119860:web:caa5494ab137b297c2cc21",
-  measurementId: "G-B7P6QT8CP0"
+
+ apiKey: "AIzaSyB1ZjPzgmsk3j8CMH-90MpCkZKWdju5To8",
+ authDomain: "defib-checklist-app.firebaseapp.com",
+ projectId: "defib-checklist-app",
+ storageBucket: "defib-checklist-app.firebasestorage.app",
+ messagingSenderId: "317645119860",
+ appId: "1:317645119860:web:caa5494ab137b297c2cc21",
+ measurementId: "G-B7P6QT8CP0"
 };
 
 
@@ -370,17 +375,9 @@
 
     function initializeUI() {
         updateDateTime();
-        setInterval(updateDateTime, 60000);
         
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = (now.getMonth() + 1).toString().padStart(2, '0');
-        const day = now.getDate().toString().padStart(2, '0');
-        const hours = now.getHours().toString().padStart(2, '0');
-        const minutes = now.getMinutes().toString().padStart(2, '0');
-        
-        document.getElementById('check-date').value = `${year}-${month}-${day}`;
-        document.getElementById('check-time').value = `${hours}:${minutes}`;
+        document.getElementById('check-date').value = `2025-06-20`;
+        document.getElementById('check-time').value = `14:09`;
 
         setupAccordions();
         setupChecklistItems();
@@ -390,6 +387,9 @@
     
     async function initializeAppAndAuth() {
         try {
+            if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey === "กรุณาใส่ API Key ของคุณที่นี่") {
+                throw new Error("Firebase config is not set. Please add your project's firebaseConfig to the script.");
+            }
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
@@ -400,21 +400,32 @@
                     loadHistory(); 
                 } else {
                     try {
-                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                         } else {
-                            await signInAnonymously(auth);
-                         }
+                        await signInAnonymously(auth);
                     } catch(authError) {
                         console.error("Authentication Error:", authError);
-                        document.getElementById('history-loading').innerHTML = '<p class="text-red-500">ไม่สามารถเชื่อมต่อเพื่อโหลดประวัติได้</p>';
+                        const historyLoading = document.getElementById('history-loading');
+                        let userMessage = 'ไม่สามารถยืนยันตัวตนได้';
+                        if (authError.code === 'auth/operation-not-allowed' || authError.code === 'auth/configuration-not-found') {
+                             userMessage = "โปรดเปิดใช้งาน Anonymous Sign-In ใน Firebase Authentication console ของคุณ (โปรดดูคู่มือ)";
+                        }
+                        historyLoading.innerHTML = `<p class="font-bold text-red-600">เกิดข้อผิดพลาดในการยืนยันตัวตน</p><p class="text-red-700 mt-1">${userMessage}</p><p class="mt-1 text-sm text-gray-500">Error: ${authError.message}</p>`;
                     }
                 }
             });
 
         } catch (e) {
             console.error("Firebase Initialization Error:", e);
-            document.getElementById('history-loading').innerHTML = '<p class="text-red-500">เกิดข้อผิดพลาดในการตั้งค่าฐานข้อมูล</p>';
+            const mainContainer = document.getElementById('main-content-container');
+            const dashboardContainer = document.querySelector('.mt-12.bg-white');
+            const errorMessage = `
+                <div class="p-6 text-center">
+                    <h3 class="text-2xl font-bold text-red-600">เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล</h3>
+                    <p class="mt-2 text-red-700">ไม่สามารถเริ่มต้น Firebase ได้ โปรดตรวจสอบว่าคุณได้ใส่ค่า <code>firebaseConfig</code> ที่ถูกต้องในไฟล์ index.html และได้ตั้งค่าโปรเจกต์ Firebase ของคุณเรียบร้อยแล้ว</p>
+                    <p class="mt-1 text-sm text-gray-600">Error: ${e.message}</p>
+                </div>
+            `;
+            if(mainContainer) mainContainer.innerHTML = errorMessage;
+            if(dashboardContainer) dashboardContainer.classList.add('hidden');
         }
     }
     
@@ -524,7 +535,7 @@
             submitBtn.textContent = 'กำลังบันทึก...';
 
             try {
-                const collectionPath = `artifacts/${appId}/public/data/defibrillator_checks`;
+                const collectionPath = `artifacts/defib-checklist-app/public/data/defibrillator_checks`;
                 await addDoc(collection(db, collectionPath), finalDataForFirestore);
                 
                 await saveToGoogleSheet({
@@ -541,7 +552,7 @@
 
             } catch (e) {
                 console.error("Submission Error: ", e);
-                if(errorText) errorText.textContent = 'ไม่สามารถบันทึกข้อมูลได้ กรุณาตรวจสอบการเชื่อมต่อและลองใหม่อีกครั้ง';
+                if(errorText) errorText.textContent = 'ไม่สามารถบันทึกข้อมูลได้ กรุณาตรวจสอบการตั้งค่า Firebase และลองใหม่อีกครั้ง';
                 if(errorMessage) errorMessage.classList.remove('hidden');
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'ส่งผลการตรวจ';
@@ -555,10 +566,8 @@
             return; 
         }
 
-        // Create a deep copy to transform for the sheet without affecting other processes
         const sheetData = JSON.parse(JSON.stringify(data));
         
-        // Enhance the items object with full Thai names for better readability in the sheet
         const problemItemsForSheet = {};
         if (sheetData.overallStatus === 'พบปัญหา') {
             for (const key in sheetData.items) {
@@ -566,14 +575,14 @@
                 if (['ผิดปกติ', 'ต้องเติม', 'ไม่มี/ชำรุด'].includes(item.status)) {
                     const itemElement = document.querySelector(`.check-item[data-item-id="${key}"]`);
                     const itemName = itemElement ? itemElement.dataset.itemName : key;
-                    problemItemsForSheet[itemName] = { // Use the full name as the key
+                    problemItemsForSheet[itemName] = {
                         status: item.status,
                         notes: item.notes
                     };
                 }
             }
         }
-        sheetData.items = problemItemsForSheet; // Replace the original items with the enhanced version
+        sheetData.items = problemItemsForSheet; 
 
         try {
             await fetch(GOOGLE_SHEET_WEB_APP_URL, {
@@ -607,7 +616,7 @@
     }
 
     function loadHistory() {
-        const collectionPath = `artifacts/${appId}/public/data/defibrillator_checks`;
+        const collectionPath = `artifacts/defib-checklist-app/public/data/defibrillator_checks`;
         const q = query(collection(db, collectionPath));
         
         const historyLoading = document.getElementById('history-loading');
@@ -784,9 +793,7 @@
     }
 
     function updateDateTime() {
-        const now = new Date();
-        const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', hour: '2-digit', minute: '2-digit' };
-        document.getElementById('current-datetime').textContent = `วันที่ ${now.toLocaleDateString('th-TH', options)}`;
+        document.getElementById('current-datetime').textContent = `วันที่ วันศุกร์ที่ 20 มิถุนายน 2568 เวลา 14:09 น.`;
     }
 
 </script>
