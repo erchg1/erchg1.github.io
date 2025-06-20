@@ -352,8 +352,16 @@
 
     const GOOGLE_SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw1a4ABt5DlwJGo_W3Ndfdsxg-AEmWL3jFFlwVNnk5S-CjSIijEGMy4bY2ucpOUpl6L/exec';
 
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "...", authDomain: "...", projectId: "...", storageBucket: "...", messagingSenderId: "...", appId: "..." };
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-defib-app';
+    const firebaseConfig = {
+  apiKey: "AIzaSyB1ZjPzgmsk3j8CMH-90MpCkZKWdju5To8",
+  authDomain: "defib-checklist-app.firebaseapp.com",
+  projectId: "defib-checklist-app",
+  storageBucket: "defib-checklist-app.firebasestorage.app",
+  messagingSenderId: "317645119860",
+  appId: "1:317645119860:web:caa5494ab137b297c2cc21",
+  measurementId: "G-B7P6QT8CP0"
+};
+
 
     document.addEventListener('DOMContentLoaded', () => {
         initializeUI();
