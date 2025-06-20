@@ -355,17 +355,17 @@
     // =====================================================================================
     // !! สำคัญ: กรุณานำค่า Firebase Config จากโปรเจกต์ของคุณมาใส่ที่นี่ !!
     // คุณสามารถรับค่านี้ได้จาก Firebase Console -> Project settings (ไอคอนเฟือง)
+    // หากไม่แก้ไขส่วนนี้ แอปพลิเคชันจะไม่สามารถเชื่อมต่อฐานข้อมูลได้
     // =====================================================================================
     const firebaseConfig = {
-
- apiKey: "AIzaSyB1ZjPzgmsk3j8CMH-90MpCkZKWdju5To8",
- authDomain: "defib-checklist-app.firebaseapp.com",
- projectId: "defib-checklist-app",
- storageBucket: "defib-checklist-app.firebasestorage.app",
- messagingSenderId: "317645119860",
- appId: "1:317645119860:web:caa5494ab137b297c2cc21",
- measurementId: "G-B7P6QT8CP0"
-};
+      apiKey: "AIzaSyB1ZjPzgmsk3j8CMH-90MpCkZKWdju5To8",
+      authDomain: "defib-checklist-app.firebaseapp.com",
+      projectId: "defib-checklist-app",
+      storageBucket: "defib-checklist-app.appspot.com",
+      messagingSenderId: "317645119860",
+      appId: "1:317645119860:web:caa5494ab137b297c2cc21",
+      measurementId: "G-B7P6QT8CP0"
+    };
 
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -377,7 +377,7 @@
         updateDateTime();
         
         document.getElementById('check-date').value = `2025-06-20`;
-        document.getElementById('check-time').value = `14:09`;
+        document.getElementById('check-time').value = `14:40`;
 
         setupAccordions();
         setupChecklistItems();
@@ -387,7 +387,7 @@
     
     async function initializeAppAndAuth() {
         try {
-            if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey === "กรุณาใส่ API Key ของคุณที่นี่") {
+            if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey.includes("กรุณาใส่")) {
                 throw new Error("Firebase config is not set. Please add your project's firebaseConfig to the script.");
             }
             const app = initializeApp(firebaseConfig);
@@ -406,7 +406,7 @@
                         const historyLoading = document.getElementById('history-loading');
                         let userMessage = 'ไม่สามารถยืนยันตัวตนได้';
                         if (authError.code === 'auth/operation-not-allowed' || authError.code === 'auth/configuration-not-found') {
-                             userMessage = "โปรดเปิดใช้งาน Anonymous Sign-In ใน Firebase Authentication console ของคุณ (โปรดดูคู่มือ)";
+                             userMessage = "โปรดเปิดใช้งาน Anonymous Sign-In ใน Firebase Authentication console ของคุณ";
                         }
                         historyLoading.innerHTML = `<p class="font-bold text-red-600">เกิดข้อผิดพลาดในการยืนยันตัวตน</p><p class="text-red-700 mt-1">${userMessage}</p><p class="mt-1 text-sm text-gray-500">Error: ${authError.message}</p>`;
                     }
@@ -522,6 +522,8 @@
             
             const hasIssue = Object.values(checklistState).some(item => ['ผิดปกติ', 'ต้องเติม', 'ไม่มี/ชำรุด'].includes(item.status));
             const overallStatus = hasIssue ? 'พบปัญหา' : 'ผ่าน';
+            
+            const appIdentifier = firebaseConfig.projectId;
 
             const finalDataForFirestore = {
                 checkerName,
@@ -535,7 +537,10 @@
             submitBtn.textContent = 'กำลังบันทึก...';
 
             try {
-                const collectionPath = `artifacts/defib-checklist-app/public/data/defibrillator_checks`;
+                if (!db) {
+                    throw new Error("ฐานข้อมูล (Firestore) ยังไม่พร้อมใช้งาน");
+                }
+                const collectionPath = `artifacts/${appIdentifier}/public/data/defibrillator_checks`;
                 await addDoc(collection(db, collectionPath), finalDataForFirestore);
                 
                 await saveToGoogleSheet({
@@ -552,7 +557,7 @@
 
             } catch (e) {
                 console.error("Submission Error: ", e);
-                if(errorText) errorText.textContent = 'ไม่สามารถบันทึกข้อมูลได้ กรุณาตรวจสอบการตั้งค่า Firebase และลองใหม่อีกครั้ง';
+                if(errorText) errorText.textContent = `ไม่สามารถบันทึกข้อมูลได้: ${e.message}`;
                 if(errorMessage) errorMessage.classList.remove('hidden');
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'ส่งผลการตรวจ';
@@ -616,7 +621,15 @@
     }
 
     function loadHistory() {
-        const collectionPath = `artifacts/defib-checklist-app/public/data/defibrillator_checks`;
+        if (!db) {
+            console.error("Firestore is not initialized. Cannot load history.");
+            const historyLoading = document.getElementById('history-loading');
+            historyLoading.innerHTML = '<p class="text-red-500">ไม่สามารถโหลดประวัติได้ เนื่องจากฐานข้อมูลยังไม่พร้อมใช้งาน</p>';
+            return;
+        }
+
+        const appIdentifier = firebaseConfig.projectId;
+        const collectionPath = `artifacts/${appIdentifier}/public/data/defibrillator_checks`;
         const q = query(collection(db, collectionPath));
         
         const historyLoading = document.getElementById('history-loading');
@@ -793,7 +806,7 @@
     }
 
     function updateDateTime() {
-        document.getElementById('current-datetime').textContent = `วันที่ วันศุกร์ที่ 20 มิถุนายน 2568 เวลา 14:09 น.`;
+        document.getElementById('current-datetime').textContent = `วันที่ วันศุกร์ที่ 20 มิถุนายน 2568 เวลา 14:40 น.`;
     }
 
 </script>
